@@ -1,0 +1,44 @@
+[
+  {
+    "report_id": "TEST-001",
+    "findings": "Mild opacity is present in the left lower lung. No pleural effusion or pneumothorax is identified.",
+    "impression": "The left lower-lobe opacity may represent pneumonia. Clinical correlation is recommended.",
+    "report_conditions": ["pneumonia"]
+  },
+  {
+    "report_id": "TEST-002",
+    "findings": "Blunting of the right costophrenic angle is present. The heart size is within normal limits.",
+    "impression": "Small right pleural effusion.",
+    "report_conditions": ["pleural_effusion"]
+  },
+  {
+    "report_id": "TEST-003",
+    "findings": "The cardiac silhouette is enlarged. The lungs are clear without focal air-space opacity.",
+    "impression": "Mild cardiomegaly. No focal pneumonia.",
+    "report_conditions": ["cardiomegaly"]
+  },
+  {
+    "report_id": "TEST-004",
+    "findings": "Small area of linear opacity at the right lung base. No pleural effusion or pneumothorax.",
+    "impression": "Mild right basilar atelectasis.",
+    "report_conditions": ["atelectasis"]
+  },
+  {
+    "report_id": "TEST-005",
+    "findings": "There is a small area of increased lucency at the left lung apex with a visible pleural line.",
+    "impression": "Findings are concerning for a small left pneumothorax.",
+    "report_conditions": ["pneumothorax"]
+  },
+  {
+    "report_id": "TEST-006",
+    "findings": "The lungs are clear. No focal opacity, pleural effusion, or pneumothorax is seen. The heart size is normal.",
+    "impression": "No acute cardiopulmonary abnormality.",
+    "report_conditions": []
+  },
+  {
+    "report_id": "TEST-007",
+    "findings": "Mild right lower-lobe opacity is present with a small amount of pleural fluid.",
+    "impression": "Right lower-lobe pneumonia cannot be excluded. Small right pleural effusion.",
+    "report_conditions": ["pneumonia", "pleural_effusion"]
+  }
+]
