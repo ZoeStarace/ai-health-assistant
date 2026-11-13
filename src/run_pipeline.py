@@ -1,70 +1,131 @@
-import json
+from pathlib import Path
 
-from pdf_extractor import process_pdf
-from llm_comparator import (
+from .condition_detector import detect_conditions
+from .llm_comparator import (
     build_prompt,
     call_llm,
     parse_llm_response,
     validate_llm_response,
 )
+from .pdf_extractor import process_pdf
 
 
-FAKE_CNN_PREDICTIONS = {
-    "pneumonia": 0.78,
-    "pleural_effusion": 0.21,
-    "pneumothorax": 0.04,
-    "atelectasis": 0.12,
-    "cardiomegaly": 0.08,
+DEFAULT_CNN_PREDICTIONS = {
+    "pneumonia": 0.72,
+    "pleural_effusion": 0.18,
+    "pneumothorax": 0.05,
+    "atelectasis": 0.36,
+    "cardiomegaly": 0.09,
 }
 
 
-def run_pipeline(pdf_path):
-    """Process one PDF and generate a patient-friendly explanation."""
+PLAIN_LANGUAGE = {
+    "pneumonia": "an infection that can cause inflammation in the lungs",
+    "pleural_effusion": "extra fluid around a lung",
+    "pneumothorax": "air around a lung that may cause it to partly collapse",
+    "atelectasis": "an area of the lung that is not fully expanded",
+    "cardiomegaly": "a heart that appears larger than usual on the image",
+}
 
-    # Step 1: Extract the report from the PDF
-    report = process_pdf(pdf_path)
 
-    # Step 2: Add temporary CNN predictions
-    report_data = {
-        **report,
-        "cnn_predictions": FAKE_CNN_PREDICTIONS,
+def build_local_explanation(detected_conditions, predictions):
+    """Create a safe explanation when Bedrock is not configured."""
+
+    detected_by_name = {
+        item["condition"]: item for item in detected_conditions
     }
+    strongest = max(predictions, key=predictions.get)
+    probability = predictions[strongest]
 
-    # Step 3: Build the prompt for Gemma
-    prompt = build_prompt(report_data)
+    if detected_conditions:
+        report_names = ", ".join(
+            item["condition"].replace("_", " ")
+            for item in detected_conditions
+        )
+        first = (
+            "The radiology report mentions or discusses "
+            f"{report_names}. The temporary image model's highest score is "
+            f"for {strongest.replace('_', ' ')} at {probability:.1%}."
+        )
+    else:
+        first = (
+            "The report does not clearly mention any of the five conditions "
+            "supported by this prototype. The temporary image model's highest "
+            f"score is for {strongest.replace('_', ' ')} at {probability:.1%}."
+        )
 
-    # Step 4: Call Gemma through Amazon Bedrock
-    raw_response = call_llm(prompt)
+    if strongest in detected_by_name:
+        first += " The report and temporary model point to the same general finding."
+    else:
+        first += " The report and temporary model do not clearly point to the same finding."
 
-    # Step 5: Convert Gemma's response into a Python dictionary
-    parsed_response, parsing_warnings = parse_llm_response(
-        raw_response
+    second = (
+        f"In general, {strongest.replace('_', ' ')} refers to "
+        f"{PLAIN_LANGUAGE[strongest]}. A probability from the model is not a "
+        "diagnosis and does not confirm that the condition is present."
     )
 
-    # Step 6: Validate the response
-    validation_warnings = validate_llm_response(parsed_response)
+    third = (
+        "A healthcare professional may consider symptoms, medical history, "
+        "physical examination, and other tests when interpreting these results. "
+        "Please discuss the original X-ray and radiology report with a qualified "
+        "healthcare professional."
+    )
 
-    all_warnings = parsing_warnings + validation_warnings
-
-    if all_warnings:
-        for warning in all_warnings:
-            print(f"WARNING: {warning}")
-
-    # Step 7: Print only the patient-facing explanation
-    print("\nPatient Explanation:\n")
-    print(parsed_response["patient_explanation"])
-
-    print("\nDisclaimer:\n")
-    print(parsed_response["disclaimer"])
-
-    return parsed_response
+    return f"{first}\n\n{second}\n\n{third}"
 
 
-if __name__ == "__main__":
-    pdf_path = "/Users/shreyabharath/Documents/aiHealthAssistant/ai-health-assistant/data/sample_report.pdf"
+def run_pipeline(pdf_path, cnn_predictions=None, use_llm=True):
+    """Extract a report, compare it with predictions, and return UI-ready data."""
 
-    try:
-        result = run_pipeline(pdf_path)
+    pdf_path = Path(pdf_path)
+    predictions = cnn_predictions or DEFAULT_CNN_PREDICTIONS
+    report = process_pdf(pdf_path)
 
-    except Exception as error:
-        print(f"ERROR: {error}")
+    if not report["findings"] and not report["impression"]:
+        raise ValueError("No readable text was found in the uploaded PDF.")
+
+    detected_conditions = detect_conditions(report)
+    report_data = {
+        **report,
+        "report_conditions": detected_conditions,
+        "cnn_predictions": predictions,
+    }
+
+    warnings = []
+
+    if use_llm:
+        try:
+            prompt = build_prompt(report_data)
+            raw_response = call_llm(prompt)
+            parsed_response, parsing_warnings = parse_llm_response(raw_response)
+            validation_warnings = validate_llm_response(parsed_response)
+
+            return {
+                **parsed_response,
+                "report": report,
+                "detected_conditions": detected_conditions,
+                "warnings": parsing_warnings + validation_warnings,
+                "used_llm": True,
+            }
+        except Exception as error:
+            warnings.append(
+                "Amazon Bedrock was unavailable, so the local fallback was used: "
+                f"{error}"
+            )
+
+    return {
+        "report_id": report["report_id"],
+        "comparisons": [],
+        "patient_explanation": build_local_explanation(
+            detected_conditions, predictions
+        ),
+        "disclaimer": (
+            "This information is for educational purposes only and is not a "
+            "medical diagnosis."
+        ),
+        "report": report,
+        "detected_conditions": detected_conditions,
+        "warnings": warnings,
+        "used_llm": False,
+    }
